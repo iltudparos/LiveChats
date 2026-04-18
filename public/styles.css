@@ -117,13 +117,63 @@ body {
     z-index: 1;
 }
 
+/* ========== AJOUTS : IMAGES CENTRÉES + BORDS ARRONDIS ========== */
+
+/* Pour toutes les images dans les messages (pas les avatars) */
+.message img.attachment,
+.message .attachment-image,
+img:not(.avatar) {
+    border-radius: 20px !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: block;
+    margin: 0 auto;
+    max-width: 90%;
+    max-height: 85vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    position: relative;
+    top: auto;
+    left: auto;
+}
+
+/* Suppression des marges blanches autour des images */
+.message .attachment {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: transparent;
+}
+
+/* Pour que les images ne prennent pas toute la largeur si elles sont petites */
+.content img {
+    max-width: 80%;
+    max-height: 70vh;
+    border-radius: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Garder le texte au-dessus des images correctement */
+.content {
+    position: relative;
+    z-index: 2;
+}
+
+/* Amélioration des vidéos aussi */
 video.attachment {
     left: unset;
-    width: unset;
+    width: auto;
+    max-width: 90%;
     max-height: 85vh;
-    right: 1vw;
+    right: unset;
+    margin: 0 auto;
+    display: block;
+    border-radius: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 video.attachment::-webkit-media-controls {
     display: none;
 }
+
+/* ========== FIN DES AJOUTS ========== */
