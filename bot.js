@@ -17,6 +17,24 @@ const bot = new Client({
 const registeredServers = {};
 const webSocketClients = {};
 
+// ============ AJOUT POUR LE DESSIN ============
+// Stockage des dessins par channel
+const drawings = {};
+
+// Configuration du canvas (taille par défaut)
+const CANVAS_WIDTH = 900;
+const CANVAS_HEIGHT = 550;
+
+// Fonction pour créer un canvas vide
+function getEmptyCanvas() {
+    return {
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+        lines: []  // Stocke tous les traits
+    };
+}
+// ============ FIN AJOUT POUR LE DESSIN ============
+
 bot.once('ready', () => {
     console.log(`Bot connecté en tant que ${bot.user.tag}`);
 });
@@ -144,6 +162,19 @@ app.get('/view/:channelId', (req, res) => {
     });
 });
 
+// ============ AJOUT : Route pour la page de dessin ============
+app.get('/draw/:channelId', (req, res) => {
+    const channelId = req.params.channelId;
+    res.render('draw', {
+        channelId,
+        useSecureWs: process.env.USE_SECURE_WS === 'true',
+        baseUrl: process.env.BASE_URL || 'localhost',
+        wsPort: process.env.PORT || '80',
+        hideWebsocketPort: process.env.HIDE_WS_PORT === 'true',
+    });
+});
+// ============ FIN AJOUT ============
+
 const baseUrl = process.env.BASE_URL || 'localhost';
 const port = process.env.PORT || 80; // Default to 80
 const useSecureWs = process.env.USE_SECURE_WS === 'true';
@@ -157,6 +188,7 @@ const server = http.createServer(app);
 // Initialize WebSocket server using the HTTP server
 const wss = new WebSocketServer({ noServer: true }); // Don't create a separate server
 
+// ============ VERSION MODIFIÉE DU WebSocket (avec support dessin) ============
 wss.on('connection', (ws, req) => {
     const params = new URLSearchParams(req.url.split('?')[1]);
     const channelId = params.get('channelId');
@@ -169,6 +201,74 @@ wss.on('connection', (ws, req) => {
 
     console.log(`Client connecté au channel ID: ${channelId}`);
 
+    // Initialiser le stockage du dessin pour ce channel
+    if (!drawings[channelId]) {
+        drawings[channelId] = getEmptyCanvas();
+    }
+
+    // Envoyer l'état actuel du dessin au nouveau client
+    ws.send(JSON.stringify({
+        type: 'init_drawing',
+        canvas: drawings[channelId]
+    }));
+
+    // Écouter les messages de dessin
+    ws.on('message', (data) => {
+        try {
+            const message = JSON.parse(data.toString());
+            
+            // Gestion des messages de dessin
+            if (message.type === 'draw') {
+                // Stocker le trait
+                drawings[channelId].lines.push({
+                    tool: message.tool,
+                    x1: message.x1, y1: message.y1,
+                    x2: message.x2, y2: message.y2,
+                    color: message.color,
+                    size: message.size
+                });
+                
+                // Limiter le stockage (garde les 500 derniers traits)
+                if (drawings[channelId].lines.length > 500) {
+                    drawings[channelId].lines.shift();
+                }
+                
+                // Diffuser à tous les autres clients du même channel
+                if (webSocketClients[channelId]) {
+                    webSocketClients[channelId].forEach((client) => {
+                        if (client !== ws && client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'draw',
+                                tool: message.tool,
+                                x1: message.x1, y1: message.y1,
+                                x2: message.x2, y2: message.y2,
+                                color: message.color,
+                                size: message.size
+                            }));
+                        }
+                    });
+                }
+            }
+            
+            // Gestion du clear (effacer tout)
+            else if (message.type === 'clear') {
+                drawings[channelId] = getEmptyCanvas();
+                
+                // Diffuser le clear à tous les clients
+                if (webSocketClients[channelId]) {
+                    webSocketClients[channelId].forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({ type: 'clear' }));
+                        }
+                    });
+                }
+            }
+            
+        } catch (e) {
+            console.error('Erreur de parsing WebSocket:', e);
+        }
+    });
+
     ws.on('close', () => {
         webSocketClients[channelId] = webSocketClients[channelId].filter(
             (client) => client !== ws
@@ -176,6 +276,7 @@ wss.on('connection', (ws, req) => {
         console.log(`Client déconnecté du channel ID: ${channelId}`);
     });
 });
+// ============ FIN MODIFICATION WebSocket ============
 
 // Handle the HTTP server upgrade to WebSocket
 server.on('upgrade', (request, socket, head) => {
